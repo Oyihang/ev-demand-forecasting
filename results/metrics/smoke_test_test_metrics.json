@@ -1,0 +1,22 @@
+{
+  "MAE": 27.897398362557094,
+  "RMSE": 33.16126097106731,
+  "WAPE_pct": 109.52739466486103,
+  "MAPE_nonzero_pct": 274.77753180486195,
+  "test_pinball_normalized": 0.6536084413528442,
+  "best_val_pinball_normalized": 0.44136688113212585,
+  "n_test_windows": 1,
+  "n_zones": 8,
+  "horizon_length": 24,
+  "quantile_pinball_original_units": {
+    "0.1": 9.228864348617693,
+    "0.5": 13.948699181278547,
+    "0.9": 3.414974209231635
+  },
+  "interval_80pct": {
+    "PICP_pct": 0.5208333333333333,
+    "PINAW_pct": 1.2512577633707949,
+    "mean_interval_width": 0.9123756115635236
+  },
+  "quantile_crossing_pct": 100.0
+}

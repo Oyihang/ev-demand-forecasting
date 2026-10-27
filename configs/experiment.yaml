@@ -1,0 +1,43 @@
+# Paths are relative to the repository root.
+data:
+  root: data/raw/20220901-20230228_zone-cleaned-aggregated
+  frequency_dir: charge_1hour
+  target_file: volume.csv
+  occupancy_file: occupancy.csv
+  duration_file: duration.csv
+  electricity_price_file: e_price.csv
+  service_price_file: s_price.csv
+  adjacency_file: adj.csv
+  distance_file: distance.csv
+  graph_type: adjacency  # adjacency | distance_weighted
+  distance_k: 8
+  zone_info_file: zone-information.csv
+  context_length: 168
+  horizon_length: 24
+  train_stride: 6
+  val_stride: 6
+  test_stride: 6
+  train_ratio: 0.70
+  val_ratio: 0.15
+  # Limit zones for quick smoke tests; null means use all aligned zones.
+  max_zones: null
+model:
+  hidden_dim: 64
+  gnn_hidden_dim: 16
+  num_heads: 4
+  dropout: 0.1
+  lstm_layers: 2
+  quantiles: [0.1, 0.5, 0.9]
+training:
+  seed: 42
+  epochs: 20
+  batch_size: 2
+  learning_rate: 0.0005
+  weight_decay: 0.00001
+  patience: 5
+  num_workers: 0
+  device: auto
+  gradient_clip_norm: 1.0
+  log_every: 1
+outputs:
+  directory: results

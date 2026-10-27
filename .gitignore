@@ -1,0 +1,10 @@
+.DS_Store
+.pytest_cache/
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Raw UrbanEV files are not redistributed with this repository.
+data/raw/*
+!data/raw/.gitkeep

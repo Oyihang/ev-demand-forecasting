@@ -1,0 +1,8 @@
+{
+  "MAE": 142.78462771487472,
+  "RMSE": 621.9858140245873,
+  "WAPE_pct": 57.50774179247288,
+  "MAPE_nonzero_pct": 78.85993400442229,
+  "n_test_windows": 105,
+  "baseline": "persistence"
+}

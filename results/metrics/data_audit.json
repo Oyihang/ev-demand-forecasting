@@ -1,0 +1,64 @@
+{
+  "rows": 4344,
+  "zones": 275,
+  "start_time": "2022-09-01 00:00:00",
+  "end_time": "2023-02-28 23:00:00",
+  "target_shape": [
+    4344,
+    275
+  ],
+  "graph_features_shape": [
+    4344,
+    275,
+    3
+  ],
+  "known_features_shape": [
+    4344,
+    7
+  ],
+  "static_shape": [
+    275,
+    7
+  ],
+  "adjacency_shape": [
+    275,
+    275
+  ],
+  "adjacency_nonzero_ratio": 0.019768595041322314,
+  "feature_names": {
+    "known": [
+      "hour_sin",
+      "hour_cos",
+      "dow_sin",
+      "dow_cos",
+      "is_weekend",
+      "doy_sin",
+      "doy_cos"
+    ],
+    "graph": [
+      "target_log_scaled",
+      "occupancy",
+      "duration"
+    ],
+    "static": [
+      "longitude",
+      "latitude",
+      "charge_count",
+      "area",
+      "perimeter",
+      "electricity_price_mean",
+      "service_price_mean"
+    ]
+  },
+  "train_end_index": 3040,
+  "validation_end_index": 3691,
+  "target_finite": true,
+  "graph_features_finite": true,
+  "static_finite": true,
+  "adjacency_finite": true,
+  "train_ratio_actual": 0.6998158379373849,
+  "val_ratio_actual": 0.14986187845303867,
+  "test_ratio_actual": 0.15032228360957642,
+  "target_min_log_scaled": -17.687284469604492,
+  "target_max_log_scaled": 2.8471977710723877
+}
