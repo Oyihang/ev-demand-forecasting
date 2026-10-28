@@ -14,6 +14,7 @@ data:
   zone_info_file: zone-information.csv
   context_length: 168
   horizon_length: 24
+  known_input_cardinalities: [7, 24, 2]  # day of week, hour, weekend
   train_stride: 6
   val_stride: 6
   test_stride: 6

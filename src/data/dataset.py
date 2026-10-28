@@ -109,9 +109,7 @@ def load_urbanev(config: dict, root_dir: str | Path = ".") -> PreparedData:
         raise ValueError("data.graph_type must be 'adjacency' or 'distance_weighted'")
     adjacency = _normalize_adjacency(raw_adjacency)
 
-    # Define chronological split boundaries before any time-dependent summary features.
-    # Static price summaries must use training timestamps only to avoid peeking into
-    # validation/test periods. The target scaler below uses the same boundary.
+    # Define chronological split boundaries before fitting any time-dependent scalers.
     total_t = len(times)
     train_end = int(total_t * float(dcfg.get("train_ratio", 0.70)))
     val_end = train_end + int(total_t * float(dcfg.get("val_ratio", 0.15)))
@@ -121,23 +119,20 @@ def load_urbanev(config: dict, root_dir: str | Path = ".") -> PreparedData:
             "Check train_ratio and val_ratio."
         )
 
-    # Static information. Missing entries are filled from cross-sectional geometry.
+    # Keep only the requested time-invariant zone attributes.
     info_path = data_root / dcfg.get("zone_info_file", "zone-information.csv")
     info = pd.read_csv(info_path)
     if "TAZID" not in info.columns:
         raise ValueError("zone-information.csv must contain TAZID")
     info["TAZID"] = info["TAZID"].astype(str)
     info = info.drop_duplicates("TAZID").set_index("TAZID").reindex(zone_ids)
-    static_cols = [c for c in ["longitude", "latitude", "charge_count", "area", "perimeter"] if c in info.columns]
+    static_cols = ["charge_count", "area", "perimeter"]
+    missing_static = [name for name in static_cols if name not in info.columns]
+    if missing_static:
+        raise ValueError(f"zone-information.csv is missing static features: {missing_static}")
     static_raw = info[static_cols].apply(pd.to_numeric, errors="coerce")
+    static_raw = static_raw.replace([np.inf, -np.inf], np.nan)
     static_raw = static_raw.fillna(static_raw.median()).fillna(0.0)
-    # Price variables are static descriptors estimated from TRAINING PERIOD ONLY.
-    # This avoids using validation/test-period tariff information in a static feature.
-    for price_key in ["electricity_price", "service_price"]:
-        arr = dynamic_frames[price_key].iloc[:train_end].to_numpy(dtype=np.float32)
-        price_mean = pd.DataFrame(arr).mean(axis=0, skipna=True).to_numpy(dtype=np.float32)
-        static_raw[price_key + "_mean"] = np.where(np.isfinite(price_mean), price_mean, 0.0)
-    static_raw = static_raw.replace([np.inf, -np.inf], np.nan).fillna(0.0)
     static_names = list(static_raw.columns)
     static_values = static_raw.to_numpy(dtype=np.float32)
     s_mean = static_values.mean(axis=0, keepdims=True)
@@ -152,9 +147,9 @@ def load_urbanev(config: dict, root_dir: str | Path = ".") -> PreparedData:
     target_std = np.where(target_std < 1e-6, 1.0, target_std)
     target_scaled = ((target_log - target_mean) / target_std).astype(np.float32)
 
-    graph_arrays = [target_scaled]
-    graph_names = ["target_log_scaled"]
-    for name in ["occupancy", "duration"]:
+    graph_arrays = []
+    graph_names = ["duration", "electricity_price", "service_price", "occupancy", "volume"]
+    for name in graph_names[:-1]:
         arr = dynamic_frames[name].to_numpy(dtype=np.float32)
         # Impute with forward-fill and then zero; no future values are used to fill earlier rows.
         frame = pd.DataFrame(arr).ffill().fillna(0.0)
@@ -163,21 +158,17 @@ def load_urbanev(config: dict, root_dir: str | Path = ".") -> PreparedData:
         mean = arr[:train_end].mean()
         std = arr[:train_end].std()
         graph_arrays.append(((arr - mean) / (std if std > 1e-6 else 1.0)).astype(np.float32))
-        graph_names.append(name)
+    graph_arrays.append(target_scaled)
 
-    # Time features are deterministic and available for all forecast timestamps.
+    # Raw integer calendar categories are embedded by the TFT.
     idx = pd.DatetimeIndex(times)
-    hour = idx.hour.to_numpy()
-    dow = idx.dayofweek.to_numpy()
-    day_of_year = idx.dayofyear.to_numpy()
+    dow = idx.dayofweek.to_numpy(dtype=np.int64)
     known = np.column_stack([
-        np.sin(2 * np.pi * hour / 24), np.cos(2 * np.pi * hour / 24),
-        np.sin(2 * np.pi * dow / 7), np.cos(2 * np.pi * dow / 7),
-        (dow >= 5).astype(np.float32),
-        np.sin(2 * np.pi * day_of_year / 365.25),
-        np.cos(2 * np.pi * day_of_year / 365.25),
-    ]).astype(np.float32)
-    known_names = ["hour_sin", "hour_cos", "dow_sin", "dow_cos", "is_weekend", "doy_sin", "doy_cos"]
+        dow,
+        idx.hour.to_numpy(dtype=np.int64),
+        (dow >= 5).astype(np.int64),
+    ])
+    known_names = ["day_of_week", "hour", "is_weekend"]
     graph_features = np.stack(graph_arrays, axis=-1).astype(np.float32)
 
     max_zones = dcfg.get("max_zones")
@@ -235,6 +226,6 @@ class WindowDataset(Dataset):
         return {
             "observed": torch.from_numpy(obs.copy()),
             "graph_features": torch.from_numpy(graph.copy()),
-            "known": torch.from_numpy(known.astype(np.float32, copy=True)),
+            "known": torch.from_numpy(known.astype(np.int64, copy=True)),
             "target": torch.from_numpy(target.T.copy()),  # N,H
         }

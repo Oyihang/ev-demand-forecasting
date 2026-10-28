@@ -103,13 +103,13 @@ Main settings live in `configs/experiment.yaml`: 168-hour context, 24-hour horiz
 ## Model and tensor conventions
 
 - `observed`: `(batch, context, zones, 1)` historical target (`log1p` volume, standardized per zone using training-period statistics only).
-- `graph_features`: `(batch, context, zones, 3)` historical target, occupancy, duration signals.
-- `known`: `(batch, context+horizon, zones, 7)` deterministic calendar features available at prediction time.
-- `static`: `(zones, static_features)` zone geometry/capacity and average price descriptors.
+- `graph_features`: `(batch, context, zones, 5)` historical duration, electricity price, service price, occupancy, and volume features.
+- `known`: `(batch, context+horizon, zones, 3)` integer day-of-week, hour, and weekend categories, embedded by TFT with cardinalities `[7, 24, 2]`.
+- `static`: `(zones, 3)` charge count, area, and perimeter.
 - `adjacency`: `(zones, zones)` symmetric, self-looped, degree-normalized graph.
 - Output: `(batch, zones, horizon, 3)` quantiles (0.1, 0.5, 0.9); the median is used for point metrics.
 
-Spatial graph convolution is applied at each historical timestamp. The resulting spatial embeddings are pooled over the observed context and supplied to TFT as sample-specific static context. This is a deliberate first version: it captures historical neighbor context without assuming future realized occupancy or energy values are known.
+Spatial graph convolution is applied independently at every historical timestamp. The full sequence of spatial embeddings is passed to TFT together with the historical target; it is not averaged over time. TFT handles the temporal sequence, while the three static zone attributes condition its static encoder.
 
 ## Data leakage and evaluation
 
@@ -154,8 +154,8 @@ pytest -q
 ## Important limitations and next experiments
 
 1. This initial model is a research baseline, not a production deployment model.
-2. Spatial context is pooled over the historical window. Compare this with alternatives such as time-varying graph features passed at each time step, Graph WaveNet, GAT, or PAG.
-3. Price summaries are treated as static descriptors and are now computed using training-period timestamps only. Do not use future observed prices unless their values are genuinely known at prediction time.
+2. The graph encoder performs spatial message passing per timestamp; temporal dependencies are learned by TFT. Compare this with jointly temporal-spatial graph architectures such as Graph WaveNet, GAT, or PAG.
+3. Electricity and service prices are historical GNN inputs. Do not pass future observed prices into the forecast unless their values are genuinely known at prediction time.
 4. Report metrics by forecast horizon and zone, not just a single aggregate number.
 5. Compare temporal-only TFT, the current adjacency graph, and distance-weighted graph before claiming the spatial module improves accuracy. Also compare against persistence and 24-hour seasonal-naive baselines.
 6. The six-month period does not provide a full annual seasonal cycle.

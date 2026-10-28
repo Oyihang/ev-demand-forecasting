@@ -32,6 +32,7 @@ def make_model(data, cfg, use_spatial=True):
         graph_input_dim=data.graph_features.shape[-1],
         known_feature_names=data.feature_names["known"],
         static_feature_names=data.feature_names["static"],
+        known_input_cardinalities=cfg["data"]["known_input_cardinalities"],
         hidden_dim=int(m["hidden_dim"]), gnn_hidden_dim=int(m["gnn_hidden_dim"]),
         num_heads=int(m["num_heads"]), dropout=float(m["dropout"]),
         lstm_layers=int(m["lstm_layers"]), quantiles=tuple(m["quantiles"]), use_spatial=use_spatial,
