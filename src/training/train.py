@@ -32,6 +32,7 @@ def make_model(data, cfg, use_spatial=True):
         graph_input_dim=data.graph_features.shape[-1],
         known_feature_names=data.feature_names["known"],
         static_feature_names=data.feature_names["static"],
+        known_input_cardinalities=cfg["data"]["known_input_cardinalities"],
         hidden_dim=int(m["hidden_dim"]), gnn_hidden_dim=int(m["gnn_hidden_dim"]),
         num_heads=int(m["num_heads"]), dropout=float(m["dropout"]),
         lstm_layers=int(m["lstm_layers"]), quantiles=tuple(m["quantiles"]), use_spatial=use_spatial,
@@ -74,6 +75,18 @@ def inverse_target(arr, mean, std):
     return np.expm1(arr * std.reshape(1, -1, 1) + mean.reshape(1, -1, 1)).clip(min=0)
 
 
+def validation_wape_pct(target, prediction, target_mean, target_std):
+    with np.errstate(over="ignore", invalid="ignore"):
+        true_raw = inverse_target(np.asarray(target, dtype=np.float64), target_mean, target_std)
+        pred_raw = inverse_target(np.asarray(prediction, dtype=np.float64), target_mean, target_std)
+    if not np.isfinite(true_raw).all() or not np.isfinite(pred_raw).all():
+        raise ValueError("Validation WAPE requires finite targets and predictions in original units")
+    score = regression_metrics(true_raw, pred_raw)["WAPE_pct"]
+    if not np.isfinite(score):
+        raise ValueError("Validation WAPE is undefined because the total target volume is zero")
+    return score
+
+
 def main():
     parser = argparse.ArgumentParser(description="Train Spatial-GNN + TFT on UrbanEV hourly data")
     parser.add_argument("--config", default="configs/experiment.yaml")
@@ -109,6 +122,11 @@ def main():
     optimizer = torch.optim.AdamW(model.parameters(), lr=float(tcfg["learning_rate"]),
                                   weight_decay=float(tcfg.get("weight_decay", 0.0)))
     quantiles = tuple(cfg["model"]["quantiles"])
+    selection_metric = tcfg.get("selection_metric", "val_pinball")
+    if selection_metric not in ("val_pinball", "val_wape_pct"):
+        raise ValueError("training.selection_metric must be 'val_pinball' or 'val_wape_pct'")
+    if selection_metric == "val_wape_pct" and 0.5 not in quantiles:
+        raise ValueError("Validation WAPE selection requires the 0.5 quantile")
     outdir = ROOT / cfg["outputs"]["directory"]
     (outdir / "checkpoints").mkdir(parents=True, exist_ok=True)
     (outdir / "metrics").mkdir(parents=True, exist_ok=True)
@@ -119,14 +137,23 @@ def main():
         train_loss, _, _, _ = run_epoch(model, loaders["train"], data, device, optimizer, quantiles, float(tcfg["gradient_clip_norm"]))
         with torch.no_grad():
             val_loss, val_y, val_pred, _ = run_epoch(model, loaders["val"], data, device, None, quantiles)
-        history.append({"epoch": epoch, "train_pinball": train_loss, "val_pinball": val_loss})
-        print(f"Epoch {epoch:03d}/{max_epochs} | train pinball={train_loss:.5f} | val pinball={val_loss:.5f}")
-        if val_loss < best_val:
-            best_val, patience = val_loss, 0
+        if not np.isfinite(val_loss):
+            raise ValueError("Validation pinball loss must be finite")
+        row = {"epoch": epoch, "train_pinball": train_loss, "val_pinball": val_loss}
+        message = f"Epoch {epoch:03d}/{max_epochs} | train pinball={train_loss:.5f} | val pinball={val_loss:.5f}"
+        if selection_metric == "val_wape_pct":
+            row["val_wape_pct"] = validation_wape_pct(val_y, val_pred, data.target_mean, data.target_std)
+            message += f" | val WAPE={row['val_wape_pct']:.2f}%"
+        history.append(row)
+        print(message)
+        score = row[selection_metric]
+        if score < best_val:
+            best_val, patience = score, 0
             torch.save({"model_state_dict": model.state_dict(), "config": cfg,
                         "zone_ids": data.zone_ids, "target_mean": data.target_mean,
                         "target_std": data.target_std, "feature_names": data.feature_names,
-                        "best_val_pinball": best_val}, best_path)
+                        "best_val_pinball": val_loss, "selection_metric": selection_metric,
+                        "best_val_score": best_val}, best_path)
         else:
             patience += 1
             if patience >= int(tcfg["patience"]):
@@ -149,7 +176,11 @@ def main():
     pred_q_raw = np.expm1(test_pred_q * q_scale + q_mean).clip(min=0)
     metrics = regression_metrics(true_raw, pred_raw)
     metrics["test_pinball_normalized"] = test_loss
-    metrics["best_val_pinball_normalized"] = best_val
+    metrics["best_val_pinball_normalized"] = checkpoint["best_val_pinball"]
+    metrics["selection_metric"] = selection_metric
+    metrics["best_val_score"] = best_val
+    if selection_metric == "val_wape_pct":
+        metrics["best_val_wape_pct"] = best_val
     metrics["n_test_windows"] = int(len(test_y))
     metrics["n_zones"] = int(len(data.zone_ids))
     metrics["horizon_length"] = int(dcfg["horizon_length"])

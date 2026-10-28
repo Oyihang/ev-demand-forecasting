@@ -1,9 +1,8 @@
 """Spatially enhanced Temporal Fusion Transformer (ST-TFT).
 
-A graph convolution encodes the historical cross-zone relationships at every
-observed timestep. Its historical spatial context is pooled per zone and passed
-as sample-specific static covariates to the existing TFT implementation.
-The TFT then models temporal dependencies and produces multi-horizon quantiles.
+A graph convolution encodes cross-zone relationships at every observed timestep.
+The resulting time-varying spatial features are passed to the TFT alongside the
+historical target, where its temporal layers model their evolution.
 """
 from __future__ import annotations
 from typing import Sequence
@@ -43,9 +42,11 @@ class SpatialTFT(nn.Module):
 
     Inputs:
       observed: (B, context, N, 1), normalized historical target per zone
-      graph_features: (B, context, N, F), historical dynamic features
-      known: (B, context+horizon, N, K), calendar features known in advance
-      static: (N, S), static zone attributes
+      graph_features: (B, context, N, 5), historical duration, prices,
+        occupancy, and volume
+      known: (B, context+horizon, N, K), continuous weather followed by
+        categorical calendar and rain features
+      static: (N, 3), charge count, area, and perimeter
       adjacency: (N,N), normalized adjacency matrix
     Output:
       (B, N, horizon, num_quantiles), in normalized target units
@@ -55,12 +56,15 @@ class SpatialTFT(nn.Module):
                  static_feature_names: Sequence[str], hidden_dim: int = 32,
                  gnn_hidden_dim: int = 16, num_heads: int = 4,
                  dropout: float = 0.1, lstm_layers: int = 1,
-                 quantiles=(0.1, 0.5, 0.9), use_spatial: bool = True):
+                 quantiles=(0.1, 0.5, 0.9), use_spatial: bool = True,
+                 known_input_cardinalities: Sequence[int] = (7, 24, 2)):
         super().__init__()
         self.context_length = context_length
         self.horizon_length = horizon_length
         self.quantiles = tuple(quantiles)
         self.use_spatial = bool(use_spatial)
+        if len(known_input_cardinalities) > len(known_feature_names):
+            raise ValueError("Known categorical cardinalities exceed the number of known features")
         self.spatial_encoder = SpatialEncoder(graph_input_dim, gnn_hidden_dim, dropout)
         self.spatial_projection = nn.Sequential(
             nn.Linear(gnn_hidden_dim, gnn_hidden_dim), nn.ReLU(), nn.LayerNorm(gnn_hidden_dim)
@@ -69,8 +73,9 @@ class SpatialTFT(nn.Module):
             horizon_length=horizon_length,
             hidden_dim=hidden_dim,
             known_inputs=list(known_feature_names),
-            observed_inputs=["target_volume"],
-            static_covariates=list(static_feature_names) + [f"spatial_context_{i}" for i in range(gnn_hidden_dim)],
+            known_inputs_categorical_cardinalities=list(known_input_cardinalities),
+            observed_inputs=["target_volume"] + [f"spatial_feature_{i}" for i in range(gnn_hidden_dim)],
+            static_covariates=list(static_feature_names),
             num_heads=num_heads,
             dropout=dropout,
             lstm_layers=lstm_layers,
@@ -86,23 +91,32 @@ class SpatialTFT(nn.Module):
             raise ValueError(f"Expected context length {self.context_length}, got {t}")
         if graph_features.shape[:3] != (b, t, n):
             raise ValueError("graph_features must align with observed (B,T,N)")
+        if graph_features.shape[-1] != self.spatial_encoder.gcn1.linear.in_features:
+            raise ValueError("graph_features do not match the configured GNN input features")
         if known.shape[:3] != (b, t + self.horizon_length, n):
             raise ValueError("known must have shape (B, context+horizon, N, K)")
+        if known.shape[-1] != len(self.tft.known_inputs):
+            raise ValueError("known must contain all configured known features")
         if static.shape[0] != n or adjacency.shape != (n, n):
             raise ValueError("static features / adjacency do not align with zones")
+        if static.shape[-1] != len(self.tft.static_covariates):
+            raise ValueError("static must contain all configured static features")
 
         if self.use_spatial:
             spatial_seq = self.spatial_encoder(graph_features, adjacency)  # B,T,N,G
-            spatial_summary = self.spatial_projection(spatial_seq.mean(dim=1))  # B,N,G
+            spatial_features = self.spatial_projection(spatial_seq)  # B,T,N,G
         else:
             # Controlled temporal-only ablation: no information from the graph branch.
-            spatial_summary = observed.new_zeros((b, n, self.spatial_projection[0].out_features))
+            spatial_features = observed.new_zeros(
+                (b, t, n, self.spatial_projection[0].out_features)
+            )
 
         # Flatten each (window, zone) into an independent TFT series.
-        observed_flat = observed.permute(0, 2, 1, 3).reshape(b * n, t, 1)
+        observed_with_spatial = torch.cat([observed, spatial_features], dim=-1)
+        observed_flat = observed_with_spatial.permute(0, 2, 1, 3).reshape(b * n, t, -1)
         known_flat = known.permute(0, 2, 1, 3).reshape(b * n, t + self.horizon_length, -1)
         static_batch = static.unsqueeze(0).expand(b, -1, -1)
-        static_combined = torch.cat([static_batch, spatial_summary], dim=-1).reshape(b * n, -1)
+        static_flat = static_batch.reshape(b * n, -1)
         forecast = self.tft(observed_inputs=observed_flat, known_inputs=known_flat,
-                            static_covariates=static_combined)
+                            static_covariates=static_flat)
         return forecast.reshape(b, n, self.horizon_length, len(self.quantiles))

@@ -10,15 +10,15 @@
   "graph_features_shape": [
     4344,
     275,
-    3
+    5
   ],
   "known_features_shape": [
     4344,
-    7
+    10
   ],
   "static_shape": [
     275,
-    7
+    3
   ],
   "adjacency_shape": [
     275,
@@ -27,27 +27,28 @@
   "adjacency_nonzero_ratio": 0.019768595041322314,
   "feature_names": {
     "known": [
-      "hour_sin",
-      "hour_cos",
-      "dow_sin",
-      "dow_cos",
+      "T",
+      "P0",
+      "P",
+      "U",
+      "Td",
+      "day_of_week",
+      "hour",
       "is_weekend",
-      "doy_sin",
-      "doy_cos"
+      "nRAIN",
+      "is_china_holiday"
     ],
     "graph": [
-      "target_log_scaled",
+      "duration",
+      "electricity_price",
+      "service_price",
       "occupancy",
-      "duration"
+      "volume"
     ],
     "static": [
-      "longitude",
-      "latitude",
       "charge_count",
       "area",
-      "perimeter",
-      "electricity_price_mean",
-      "service_price_mean"
+      "perimeter"
     ]
   },
   "train_end_index": 3040,

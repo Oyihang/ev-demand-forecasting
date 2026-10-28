@@ -12,7 +12,7 @@ history = results / "metrics/st_tft_training_history.csv"
 if forecast.exists():
     df = pd.read_csv(forecast)
     if {"zone_id", "forecast_hour", "actual_kwh", "predicted_p50_kwh"}.issubset(df.columns):
-        zone = df.zone_id.iloc[100]
+        zone = df.zone_id.iloc[1000]
         sample = df[df.zone_id == zone].sort_values("forecast_hour")
         plt.figure(figsize=(10, 4))
         plt.plot(sample.forecast_hour, sample.actual_kwh, label="Actual")

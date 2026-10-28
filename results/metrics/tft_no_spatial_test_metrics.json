@@ -1,22 +1,22 @@
 {
-  "MAE": 71.66126292768196,
-  "RMSE": 318.1554970749768,
-  "WAPE_pct": 28.862192456718688,
-  "MAPE_nonzero_pct": 61.59974862791612,
-  "test_pinball_normalized": 0.17043164500168392,
-  "best_val_pinball_normalized": 0.16761565918014162,
+  "MAE": 55.93623221260014,
+  "RMSE": 216.1217930536258,
+  "WAPE_pct": 22.528800547246142,
+  "MAPE_nonzero_pct": 68.88783237946195,
+  "test_pinball_normalized": 0.16434782800220307,
+  "best_val_pinball_normalized": 0.1692251585778736,
   "n_test_windows": 105,
   "n_zones": 275,
   "horizon_length": 24,
   "quantile_pinball_original_units": {
-    "0.1": 14.844991836344484,
-    "0.5": 35.83063146384098,
-    "0.9": 19.402931947399438
+    "0.1": 12.859414985851009,
+    "0.5": 27.96811610630007,
+    "0.9": 14.169106128971299
   },
   "interval_80pct": {
-    "PICP_pct": 77.88239538239539,
-    "PINAW_pct": 1.4367608721771639,
-    "mean_interval_width": 194.39366182036292
+    "PICP_pct": 81.56046176046175,
+    "PINAW_pct": 1.50036125751929,
+    "mean_interval_width": 202.9987902305675
   },
-  "quantile_crossing_pct": 0.4173160173160173
+  "quantile_crossing_pct": 0.002308802308802309
 }

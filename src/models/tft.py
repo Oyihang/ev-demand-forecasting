@@ -239,8 +239,8 @@ class TemporalFusionTransformer(nn.Module):
             c_selection = c_selection.unsqueeze(1)  # (B, 1, hidden_dim)
             c_enrichment = c_enrichment.unsqueeze(1)  # (B, 1, hidden_dim)
             lstm_hidden_t0 = (
-                c_h.unsqueeze(0).expand(self.lstm_layers, -1, -1),
-                c_c.unsqueeze(0).expand(self.lstm_layers, -1, -1),
+                c_h.unsqueeze(0).expand(self.lstm_layers, -1, -1).contiguous(),
+                c_c.unsqueeze(0).expand(self.lstm_layers, -1, -1).contiguous(),
             )  # h0, c0
 
         # Variable selection networks for past and future variables
